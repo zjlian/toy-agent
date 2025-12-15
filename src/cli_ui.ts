@@ -58,7 +58,9 @@ export class CliUI implements ChatUI {
 
     printToolCall(name: string, argText: string): void {
         const argsPreview = safeJsonPreview(argText);
-        this.printBox(`Tool call: ${name}`, argsPreview, (s) => this.bold(this.c(ANSI.yellow, s)));
+        const label = this.bold(this.c(ANSI.yellow, `🔧 ${name}`));
+        console.log(`${label} ${this.dim(argsPreview)}`);
+        console.log();
     }
 
     printToolResult(name: string, output: string): void {
@@ -174,4 +176,3 @@ function truncateForDisplay(text: string, options?: TruncateOptions): { text: st
 
     return { text: out, truncated };
 }
-

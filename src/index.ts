@@ -1,3 +1,5 @@
+#!/usr/bin/env bun
+
 import { z } from "zod";
 import OpenAI from "openai";
 import { type ChatCompletionMessageParam } from "openai/resources/chat/completions";
@@ -15,6 +17,7 @@ import { clearCommand } from "./commands/clear";
 import { exitCommand } from "./commands/exit";
 import { toolsCommand } from "./commands/tools";
 import { saveCommand } from "./commands/save";
+import { bindQuestionToolUI, questionTool } from "./tools/question";
 
 const envSchema = z.object({
     TOY_API_KEY: z.string().min(1),
@@ -42,7 +45,8 @@ const toolSystem = new ToolSystem()
     .register(pwdTool)
     .register(lsTool)
     .register(readFileTool)
-    .register(grepTool);
+    .register(grepTool)
+    .register(questionTool);
 
 
 // 命令系统
@@ -54,6 +58,7 @@ commandSystem.register(clearCommand).register(exitCommand).register(toolsCommand
 
 async function main() {
     const ui = new CliUI();
+    bindQuestionToolUI(ui);
     ui.printBanner({ model: env.TOY_MODEL });
 
     try {

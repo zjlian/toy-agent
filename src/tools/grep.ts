@@ -75,7 +75,7 @@ export const grepTool: Tool = {
             },
             max_output_lines: {
                 type: "integer",
-                description: "Maximum number of matching lines to return (default: 200, max: 5000)",
+                description: "Maximum number of matching lines to return",
             },
             filter: {
                 type: "string",

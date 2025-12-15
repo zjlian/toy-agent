@@ -1,7 +1,10 @@
 {
   "name": "toy-agent",
-  "module": "index.ts",
+  "module": "src/index.ts",
   "type": "module",
+  "bin": {
+    "toy-agent": "./src/index.ts"
+  },
   "private": true,
   "devDependencies": {
     "@types/bun": "latest"
@@ -10,6 +13,7 @@
     "typescript": "^5"
   },
   "dependencies": {
+    "globby": "^16.0.0",
     "openai": "^6.10.0",
     "zod": "^4.1.13"
   }
