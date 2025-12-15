@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# Shell script to start the conversation loop
+# Fill in your environment variables below
+
+set -euo pipefail
+
+# Configure your environment variables here
+TOY_API_KEY="your_api_key_here"          # Replace with your actual API key
+TOY_BASE_URL="https://api.openai.com/v1/" # Replace with your actual base URL
+TOY_MODEL="gpt-3.5-turbo"                # Replace with your actual model name
+
+# Export environment variables for current session
+export TOY_API_KEY
+export TOY_BASE_URL
+export TOY_MODEL
+
+# Display configuration (without exposing the actual API key)
+echo "Starting Conversation Loop..."
+echo "Base URL: ${TOY_BASE_URL}"
+echo "Model: ${TOY_MODEL}"
+echo "API Key: ${TOY_API_KEY:0:10}..."
+echo
+
+# Resolve project root relative to this script
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Start the conversation loop
+bun run "${SCRIPT_DIR}/src/index.ts"

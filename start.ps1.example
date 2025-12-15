@@ -1,0 +1,22 @@
+# PowerShell script to start the conversation loop
+# Fill in your environment variables below
+
+# Configure your environment variables here
+$TOY_API_KEY = "your_api_key_here"      # Replace with your actual API key
+$TOY_BASE_URL = "https://api.openai.com/v1/"  # Replace with your actual base URL
+$TOY_MODEL = "gpt-3.5-turbo"            # Replace with your actual model name
+
+# Set environment variables for current session
+$env:TOY_API_KEY = $TOY_API_KEY
+$env:TOY_BASE_URL = $TOY_BASE_URL
+$env:TOY_MODEL = $TOY_MODEL
+
+# Display configuration (without exposing the actual API key)
+Write-Host "Starting Conversation Loop..." -ForegroundColor Green
+Write-Host "Base URL: $TOY_BASE_URL" -ForegroundColor Yellow
+Write-Host "Model: $TOY_MODEL" -ForegroundColor Yellow
+Write-Host "API Key: $($TOY_API_KEY.Substring(0, 10))..." -ForegroundColor Yellow
+Write-Host ""
+
+# Start the conversation loop
+bun run (Join-Path $PSScriptRoot "src/index.ts")
