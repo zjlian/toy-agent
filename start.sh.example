@@ -8,16 +8,20 @@ set -euo pipefail
 TOY_API_KEY="your_api_key_here"          # Replace with your actual API key
 TOY_BASE_URL="https://api.openai.com/v1/" # Replace with your actual base URL
 TOY_MODEL="gpt-3.5-turbo"                # Replace with your actual model name
+# Optional: a faster/cheaper model for tool calls that explicitly opt-in (e.g. outline)
+TOY_FAST_MODEL=""                         # If unset/empty, tools fall back to TOY_MODEL
 
 # Export environment variables for current session
 export TOY_API_KEY
 export TOY_BASE_URL
 export TOY_MODEL
+export TOY_FAST_MODEL
 
 # Display configuration (without exposing the actual API key)
 echo "Starting Conversation Loop..."
 echo "Base URL: ${TOY_BASE_URL}"
 echo "Model: ${TOY_MODEL}"
+echo "Fast Model: ${TOY_FAST_MODEL:-<unset>}"
 echo "API Key: ${TOY_API_KEY:0:10}..."
 echo
 

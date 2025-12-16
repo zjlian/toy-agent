@@ -5,16 +5,20 @@
 $TOY_API_KEY = "your_api_key_here"      # Replace with your actual API key
 $TOY_BASE_URL = "https://api.openai.com/v1/"  # Replace with your actual base URL
 $TOY_MODEL = "gpt-3.5-turbo"            # Replace with your actual model name
+# Optional: a faster/cheaper model for tool calls that explicitly opt-in (e.g. outline)
+$TOY_FAST_MODEL = ""                    # If unset/empty, tools fall back to TOY_MODEL
 
 # Set environment variables for current session
 $env:TOY_API_KEY = $TOY_API_KEY
 $env:TOY_BASE_URL = $TOY_BASE_URL
 $env:TOY_MODEL = $TOY_MODEL
+$env:TOY_FAST_MODEL = $TOY_FAST_MODEL
 
 # Display configuration (without exposing the actual API key)
 Write-Host "Starting Conversation Loop..." -ForegroundColor Green
 Write-Host "Base URL: $TOY_BASE_URL" -ForegroundColor Yellow
 Write-Host "Model: $TOY_MODEL" -ForegroundColor Yellow
+Write-Host "Fast Model: $TOY_FAST_MODEL" -ForegroundColor Yellow
 Write-Host "API Key: $($TOY_API_KEY.Substring(0, 10))..." -ForegroundColor Yellow
 Write-Host ""
 

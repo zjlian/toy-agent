@@ -80,3 +80,19 @@ bun run src/index.ts
 - `start.ps1`、`start.sh` 被 git 忽略（在 `.gitignore` 中列出）
 - 使用 `start.ps1.example` 或 `start.sh.example` 作为配置模板
 - 示例文件包含占位符值，便于安全分享
+
+---
+
+## 内置工具（Tools）
+
+你可以在对话中直接要求 Agent 调用工具；也可以使用 `/tools` 查看当前可用工具列表。
+
+### outline
+
+`outline` 用于对指定源文件生成“代码大纲”（classes/structs/functions），内部会额外发起一次 LLM 调用（语言不限定，会根据文件内容/后缀做泛化分析）。
+
+示例（对话里直接说）：
+
+```text
+请调用 outline 工具分析 src/index.ts，并把工具输出原样返回给我。
+```

@@ -10,6 +10,7 @@ import { pwdTool } from "./tools/pwd";
 import { lsTool } from "./tools/ls";
 import { readFileTool } from "./tools/read_file";
 import { grepTool } from "./tools/grep";
+import { outlineTool } from "./tools/outline";
 import { CliUI } from "./cli_ui";
 import { ChatRunner, type ChatContext } from "./chat_runner";
 import { ensureSystemPrompt } from "./system_prompt";
@@ -45,6 +46,7 @@ const toolSystem = new ToolSystem()
     .register(pwdTool)
     .register(lsTool)
     .register(readFileTool)
+    .register(outlineTool)
     .register(grepTool)
     .register(questionTool);
 
