@@ -1,27 +1,18 @@
 import OpenAI from "openai";
-import { type ChatCompletionMessageParam } from "openai/resources/chat/completions";
 import { appendFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
 export type ChatRequest = OpenAI.Chat.ChatCompletionCreateParamsNonStreaming;
 export type ChatResponse = OpenAI.Chat.ChatCompletion;
+export type ChatStreamRequest = OpenAI.Chat.ChatCompletionCreateParamsStreaming;
+export type ChatStream = AsyncIterable<OpenAI.Chat.Completions.ChatCompletionChunk>;
 
+export async function generate(client: OpenAI, request: ChatRequest): Promise<ChatResponse> {
+    return await openai_generate(client, request);
+}
 
-export async function generate(
-    client: OpenAI,
-    request: ChatRequest
-): Promise<ChatResponse>;
-
-
-export async function generate(
-    client: OpenAI | any,
-    request: ChatRequest | any
-): Promise<ChatResponse | any> {
-    if (client instanceof OpenAI) {
-        // 这里需要断言 request 是 OpenAI 类型，因为重载签名已经保证了这一点
-        return await openai_generate(client, request as ChatRequest);
-    }
-    throw new Error("Unsupported Client Type");
+export async function generate_stream(client: OpenAI, request: ChatStreamRequest): Promise<ChatStream> {
+    return await openai_generate_stream(client, request);
 }
 
 async function appendDebugLog(payload: unknown): Promise<void> {
@@ -54,30 +45,30 @@ async function appendDebugLog(payload: unknown): Promise<void> {
     }
 }
 
-async function openai_generate(
-    client: OpenAI,
-    request: ChatRequest
-): Promise<ChatResponse> {
+async function openai_generate(client: OpenAI, request: ChatRequest): Promise<ChatResponse> {
     try {
         await appendDebugLog(request);
-        const response = await client.chat.completions.create(request);
-
-        return response;
-
+        return await client.chat.completions.create(request);
     } catch (error) {
-        // 3. 结构化错误处理
-        // OpenAI SDK 会抛出特定类型的 APIError，这里可以做拦截或日志
-        if (error instanceof OpenAI.APIError) {
-            const status = error.status; // e.g. 401, 429, 500
-            const code = error.code;     // e.g. 'context_length_exceeded'
-
-            console.error(`[OpenAI Driver Error] Status: ${status} | Code: ${code}`);
-
-            // 你可以选择在这里抛出自定义错误，或者原样抛出
-            throw new Error(`OpenAI request failed: ${error.message}`);
-        }
-
-        // 处理网络中断或其他未知错误
-        throw error;
+        handleOpenAIError(error);
     }
+}
+
+async function openai_generate_stream(client: OpenAI, request: ChatStreamRequest): Promise<ChatStream> {
+    try {
+        await appendDebugLog(request);
+        return await client.chat.completions.create({ ...request, stream: true });
+    } catch (error) {
+        handleOpenAIError(error);
+    }
+}
+
+function handleOpenAIError(error: unknown): never {
+    if (error instanceof OpenAI.APIError) {
+        const status = error.status;
+        const code = error.code;
+        console.error(`[OpenAI Driver Error] Status: ${status} | Code: ${code}`);
+        throw new Error(`OpenAI request failed: ${error.message}`);
+    }
+    throw error;
 }

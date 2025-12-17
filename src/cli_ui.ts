@@ -6,6 +6,9 @@ export interface ChatUI {
     printThinking(): void;
     printCoTContext(text: string | null): void;
     printAssistant(text: string): void;
+    onStreamReasoning(text: string): void;
+    onStreamContent(text: string): void;
+    onStreamEnd(): void;
     printToolCall(name: string, argText: string): void;
     printToolResult(name: string, output: string): void;
     printSystem(text: string): void;
@@ -19,6 +22,7 @@ type TruncateOptions = { maxChars?: number; maxLines?: number };
 export class CliUI implements ChatUI {
     private readonly rl: readline.Interface;
     private readonly supportsColor = Boolean(process.stdout.isTTY);
+    private currentStreamState: "reasoning" | "content" | null = null;
 
     constructor() {
         this.rl = readline.createInterface({
@@ -55,6 +59,21 @@ export class CliUI implements ChatUI {
 
     printAssistant(text: string): void {
         this.printBox("AI", text, (s) => this.bold(this.c(ANSI.cyan, s)));
+    }
+
+    onStreamReasoning(text: string): void {
+        this.streamText("reasoning", text);
+    }
+
+    onStreamContent(text: string): void {
+        this.streamText("content", text);
+    }
+
+    onStreamEnd(): void {
+        if (this.currentStreamState !== null) {
+            process.stdout.write("\n\n");
+            this.currentStreamState = null;
+        }
     }
 
     printToolCall(name: string, argText: string): void {
@@ -100,12 +119,8 @@ export class CliUI implements ChatUI {
         };
 
         for await (const chunk of stream as any) {
-            const delta = (chunk as any)?.choices?.[0]?.delta ?? {};
-
-            const reasoningDelta: unknown =
-                (delta as any).reasoning_content ??
-                (delta as any).reasoning ??
-                (delta as any).thinking;
+            const delta = chunk?.choices?.[0]?.delta ?? {};
+            const reasoningDelta = (delta as any).reasoning_content ?? (delta as any).reasoning ?? (delta as any).thinking;
             if (typeof reasoningDelta === "string" && reasoningDelta.length) {
                 reasoning += reasoningDelta;
                 if (!emittedThinkingMarker) {
@@ -115,7 +130,7 @@ export class CliUI implements ChatUI {
                 buffer += reasoningDelta;
             }
 
-            const contentDelta: unknown = (delta as any).content;
+            const contentDelta = (delta as any).content;
             if (typeof contentDelta === "string" && contentDelta.length) {
                 content += contentDelta;
                 if (!emittedOutlineMarker) {
@@ -199,6 +214,26 @@ export class CliUI implements ChatUI {
         console.log(`${border("└─")}`);
         console.log();
     }
+
+    private streamText(type: "reasoning" | "content", text: string): void {
+        if (!text) return;
+
+        const switching = this.currentStreamState !== type;
+        if (switching) {
+            if (this.currentStreamState !== null) {
+                process.stdout.write("\n");
+            }
+            const title = type === "reasoning" ? "🤔 Thinking" : "🤖 Response";
+            const color = type === "reasoning" ? ANSI.cyan : ANSI.green;
+            const heading = this.bold(this.c(color, `[ ${title} ]`));
+            process.stdout.write(`\n${heading}\n`);
+            this.currentStreamState = type;
+        }
+
+        const tone = type === "reasoning" ? ANSI.dim : ANSI.reset;
+        process.stdout.write(this.c(tone, text));
+    }
+
 }
 
 const ANSI = {
@@ -275,7 +310,7 @@ function isFullwidth(codePoint: number): boolean {
 
 function stringDisplayWidth(text: string): number {
     let width = 0;
-    for (let i = 0; i < text.length; ) {
+    for (let i = 0; i < text.length;) {
         const cp = text.codePointAt(i)!;
         i += cp > 0xffff ? 2 : 1;
         if (isCombining(cp)) continue;
@@ -287,7 +322,7 @@ function stringDisplayWidth(text: string): number {
 function sliceToDisplayWidth(text: string, maxWidth: number): string {
     let out = "";
     let width = 0;
-    for (let i = 0; i < text.length; ) {
+    for (let i = 0; i < text.length;) {
         const cp = text.codePointAt(i)!;
         const char = String.fromCodePoint(cp);
         const w = isCombining(cp) ? 0 : (isFullwidth(cp) ? 2 : 1);
@@ -302,3 +337,4 @@ function sliceToDisplayWidth(text: string, maxWidth: number): string {
 function previewToOneLine(text: string): string {
     return text.replace(/\r?\n/g, " ").replace(/\s+/g, " ");
 }
+

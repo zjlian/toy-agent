@@ -1,6 +1,6 @@
 import OpenAI from "openai";
 import { type ChatCompletionMessageParam } from "openai/resources/chat/completions";
-import { generate } from "./llm_client";
+import { generate_stream, type ChatStreamRequest } from "./llm_client";
 import { type CommandAction, type CommandSystem } from "./commands/command_system";
 import { type ToolCallLike, ToolSystem } from "./tools/tool_system";
 import { type ChatUI } from "./cli_ui";
@@ -25,6 +25,14 @@ export type ChatRunnerOptions = {
     notebook: Notebook;
     maxToolRounds?: number;
 };
+
+type StreamedAssistantMessage = Omit<ChatCompletionMessageParam, "tool_calls"> & {
+    tool_calls?: ToolCallLike[];
+    content?: string | null;
+    reasoning_content?: string | null;
+};
+
+type StreamReadyChatRequest = Omit<ChatStreamRequest, "stream">;
 
 export class ChatRunner {
     private readonly client: OpenAI;
@@ -191,7 +199,7 @@ export class ChatRunner {
      *
      * 会带上历史消息与工具定义，并启用自动 tool_choice，以便模型按需调用工具。
      */
-    private buildChatRequest() {
+    private buildChatRequest(): StreamReadyChatRequest {
         return {
             model: this.model,
             messages: this.buildRequestMessages(),
@@ -208,27 +216,66 @@ export class ChatRunner {
      * 同时对 SDK 返回的 message 类型做结构兼容的转换，以便能直接写回 conversationHistory。
      */
     private async requestModelMessage() {
-        const request = this.buildChatRequest();
-        const response = await generate(this.client, request);
-        const msg = response.choices[0]?.message;
-        if (!msg) throw new Error("No message received from AI");
+        const baseRequest = this.buildChatRequest();
+        const streamRequest: ChatStreamRequest = { ...baseRequest, stream: true };
+        const stream = await generate_stream(this.client, streamRequest);
 
-        // The OpenAI SDK returns a message object type that is slightly different from
-        // the request-side `ChatCompletionMessageParam` union, but it's structurally compatible
-        // for our usage (we only append it back into history for the next request).
-        return msg as unknown as ChatCompletionMessageParam
-            & {
-                tool_calls?: ToolCallLike[];
-                content?: string | null;
-                reasoning_content?: string | null;
-            };
+        return this.consumeChatStream(stream);
+    }
+
+    private async consumeChatStream(stream: AsyncIterable<any>): Promise<StreamedAssistantMessage> {
+        const message = {
+            role: "assistant" as ChatCompletionMessageParam["role"],
+            content: "",
+            reasoning_content: "",
+        } as StreamedAssistantMessage;
+        const toolCallMap = new Map<number, ToolCallLike>();
+
+        for await (const chunk of stream) {
+            const delta = chunk?.choices?.[0]?.delta ?? {};
+
+            if (delta.role) {
+                message.role = delta.role as ChatCompletionMessageParam["role"];
+            }
+
+            const reasoning = (delta as any).reasoning_content ?? (delta as any).reasoning ?? (delta as any).thinking;
+            if (typeof reasoning === "string" && reasoning.length) {
+                this.ui.onStreamReasoning(reasoning);
+                message.reasoning_content = (message.reasoning_content ?? "") + reasoning;
+            }
+
+            const content = (delta as any).content;
+            if (typeof content === "string" && content.length) {
+                this.ui.onStreamContent(content);
+                message.content = (message.content ?? "") + content;
+            }
+
+            const toolCalls = (delta as any).tool_calls;
+            if (Array.isArray(toolCalls) && toolCalls.length) {
+                this.accumulateToolCalls(toolCalls, toolCallMap);
+            }
+        }
+
+        this.ui.onStreamEnd();
+
+        if (toolCallMap.size > 0) {
+            const ordered = [...toolCallMap.entries()]
+                .sort((a, b) => a[0] - b[0])
+                .map(([, call]) => call);
+            message.tool_calls = ordered;
+        }
+
+        if (!message.content) message.content = null;
+        if (!message.reasoning_content) message.reasoning_content = null;
+
+        return message;
     }
 
     /**
      * 将模型返回的 assistant 消息追加到对话历史中。
      */
-    private appendAssistantMessage(message: ChatCompletionMessageParam): void {
-        this.conversationHistory.push(message);
+    private appendAssistantMessage(message: StreamedAssistantMessage): void {
+        this.conversationHistory.push(message as ChatCompletionMessageParam);
     }
 
     /**
@@ -287,10 +334,6 @@ export class ChatRunner {
         for (let round = 0; round < this.maxToolRounds; round++) {
             const msg = await this.requestModelMessage();
 
-            if (msg.reasoning_content) {
-                this.printCoTContext(msg.reasoning_content);
-            }
-
             const toolCalls = this.getToolCalls(msg);
 
             // 交错思维，将 thinking 的内容写入到 content 并入上下文
@@ -316,6 +359,33 @@ export class ChatRunner {
         return null;
     }
 
+    private accumulateToolCalls(toolCallsDelta: any[], map: Map<number, ToolCallLike>): void {
+        for (const callDelta of toolCallsDelta) {
+            const index = typeof callDelta.index === "number" ? callDelta.index : 0;
+            let call = map.get(index);
+            if (!call) {
+                call = {
+                    id: callDelta.id ?? `tool_call_${index}`,
+                    type: callDelta.type ?? "function",
+                    function: {
+                        name: callDelta.function?.name ?? "",
+                        arguments: callDelta.function?.arguments ?? "",
+                    },
+                };
+                map.set(index, call);
+            } else {
+                if (callDelta.id) call.id = callDelta.id;
+                if (callDelta.type) call.type = callDelta.type;
+                if (callDelta.function?.name) {
+                    call.function.name += callDelta.function.name;
+                }
+                if (callDelta.function?.arguments) {
+                    call.function.arguments += callDelta.function.arguments;
+                }
+            }
+        }
+    }
+
     /**
      * 将思考过程文本输出到 UI。
      * 
@@ -333,12 +403,13 @@ export class ChatRunner {
      *
      * 注意：空字符串是合法的最终回答；只有 null 才表示未获得最终回答（可能是 tool loop 超限）。
      */
-    private printFinalResponse(finalText: string | null): void {
-        // Note: `msg.content` can legally be an empty string. Treat that as a valid final response.
-        if (finalText !== null) {
-            this.ui.printAssistant(finalText);
-        } else {
+    private printFinalResponse(finalText: string | null, options?: { streamed?: boolean }): void {
+        if (finalText === null) {
             this.ui.printError("No final response received from AI (maybe tool loop exceeded).");
+            return;
+        }
+        if (!options?.streamed) {
+            this.ui.printAssistant(finalText);
         }
     }
 
@@ -372,7 +443,7 @@ export class ChatRunner {
                 this.ui.printThinking();
 
                 const finalText = await this.runToolLoop();
-                this.printFinalResponse(finalText);
+                this.printFinalResponse(finalText, { streamed: true });
             } catch (err) {
                 this.reportError(err);
             }
