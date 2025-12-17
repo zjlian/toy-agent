@@ -19,6 +19,8 @@ import { exitCommand } from "./commands/exit";
 import { toolsCommand } from "./commands/tools";
 import { saveCommand } from "./commands/save";
 import { questionTool } from "./tools/question";
+import { Notebook } from "./notebook/notebook";
+import { addNoteTool, deleteNoteTool, updateNoteTool } from "./tools/notebook";
 
 const envSchema = z.object({
     TOY_API_KEY: z.string().min(1),
@@ -36,6 +38,9 @@ const client = new OpenAI({
 // 历史记录上下文
 const conversationHistory: ChatCompletionMessageParam[] = [];
 
+// Notebook (in-memory)
+const notebook = new Notebook();
+
 // 初始化 system prompt（确保模型始终以命令行助手风格输出）
 ensureSystemPrompt(conversationHistory);
 
@@ -48,7 +53,10 @@ const toolSystem = new ToolSystem<ChatContext>()
     .register(readFileTool)
     .register(outlineTool)
     .register(grepTool)
-    .register(questionTool);
+    .register(questionTool)
+    .register(addNoteTool)
+    .register(updateNoteTool)
+    .register(deleteNoteTool);
 
 
 // 命令系统
@@ -70,6 +78,7 @@ async function main() {
             commandSystem,
             toolSystem,
             ui,
+            notebook,
         });
         await runner.run();
     } finally {

@@ -6,11 +6,11 @@ import { type CommandDefinition } from "./command_system";
 
 export const saveCommand: CommandDefinition<ChatContext> = {
     name: "save",
-    description: "Save conversation to .docs/ directory with AI-generated title",
+    description: "Save conversation to .toyagent/docs/ directory with AI-generated title",
     handler: async ({ conversationHistory, ui, client, model }, _args) => {
         try {
-            // Ensure .docs directory exists.
-            const docsDir = ".docs";
+            // Ensure .toyagent/docs directory exists.
+            const docsDir = ".toyagent/docs";
             try {
                 await mkdir(docsDir, { recursive: true });
             } catch {

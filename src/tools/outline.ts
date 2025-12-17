@@ -2,6 +2,7 @@ import OpenAI from "openai";
 import { encodingForModel, getEncoding, type Tiktoken } from "js-tiktoken";
 import { type Tool } from "./tool_system";
 import type { ChatContext } from "../chat_runner";
+import { createOutlineCache } from "./outline_cache";
 
 const OUTLINE_SYSTEM_PROMPT = `
 You are a precise Code Outline Extractor.
@@ -135,6 +136,11 @@ export const outlineTool: Tool<ChatContext> = {
         }
         if (content.includes("\0")) return `Error: '${rawPath}' appears to be a binary file (NUL byte found)`;
 
+        // --- cache lookup (project-local, content-hash only) ---
+        const cache = createOutlineCache();
+        const cached = await cache.get(content);
+        if (cached) return cached;
+
         const fastModel = process.env.TOY_FAST_MODEL?.trim();
         const model = fastModel || ctx.model;
         console.log("model", model);
@@ -184,7 +190,10 @@ export const outlineTool: Tool<ChatContext> = {
             const { content: contentOut } = await ctx.ui.previewStream("outline stream", stream);
 
             if (!contentOut.trim()) return "Error: no outline returned by the model";
-            return contentOut.trim();
+            const out = contentOut.trim();
+            // Best-effort cache write. Never affects the tool's final output.
+            await cache.set(content, out);
+            return out;
         } catch (err) {
             return `Error: outline LLM call failed - ${err instanceof Error ? err.message : String(err)}`;
         }

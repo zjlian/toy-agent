@@ -4,6 +4,7 @@ import { generate } from "./llm_client";
 import { type CommandAction, type CommandSystem } from "./commands/command_system";
 import { type ToolCallLike, ToolSystem } from "./tools/tool_system";
 import { type ChatUI } from "./cli_ui";
+import { Notebook } from "./notebook/notebook";
 
 export type ChatContext = {
     client: OpenAI;
@@ -11,6 +12,7 @@ export type ChatContext = {
     conversationHistory: ChatCompletionMessageParam[];
     ui: ChatUI;
     toolSystem: ToolSystem<ChatContext>;
+    notebook: Notebook;
 };
 
 export type ChatRunnerOptions = {
@@ -20,6 +22,7 @@ export type ChatRunnerOptions = {
     commandSystem: CommandSystem<ChatContext>;
     toolSystem: ToolSystem<ChatContext>;
     ui: ChatUI;
+    notebook: Notebook;
     maxToolRounds?: number;
 };
 
@@ -31,6 +34,7 @@ export class ChatRunner {
     private readonly toolSystem: ToolSystem<ChatContext>;
     private readonly ui: ChatUI;
     private readonly maxToolRounds: number;
+    private readonly notebook: Notebook;
 
     /**
      * 构造并初始化 ChatRunner。
@@ -45,6 +49,7 @@ export class ChatRunner {
         this.commandSystem = options.commandSystem;
         this.toolSystem = options.toolSystem;
         this.ui = options.ui;
+        this.notebook = options.notebook;
         this.maxToolRounds = options.maxToolRounds ?? 100;
     }
 
@@ -60,7 +65,94 @@ export class ChatRunner {
             conversationHistory: this.conversationHistory,
             ui: this.ui,
             toolSystem: this.toolSystem,
+            notebook: this.notebook,
         };
+    }
+
+
+    private formatLocalDateTime(date: Date): string {
+        const pad = (n: number) => String(n).padStart(2, "0");
+        const y = date.getFullYear();
+        const m = pad(date.getMonth() + 1);
+        const d = pad(date.getDate());
+        const hh = pad(date.getHours());
+        const mm = pad(date.getMinutes());
+        const ss = pad(date.getSeconds());
+        return `${y}-${m}-${d} ${hh}:${mm}:${ss}`;
+    }
+
+    private getLastUserQuery(): string {
+        for (let i = this.conversationHistory.length - 1; i >= 0; i--) {
+            const msg = this.conversationHistory[i];
+            if (!msg) continue;
+            if (msg.role !== "user") continue;
+            const content = (msg as any)?.content;
+            if (typeof content === "string") return content;
+            try {
+                return JSON.stringify(content);
+            } catch {
+                return String(content ?? "");
+            }
+        }
+        return "";
+    }
+
+    private buildDynamicNotebookSystemText(): string {
+        const now = this.formatLocalDateTime(new Date());
+        const cwd = process.cwd();
+        const lastQuery = this.getLastUserQuery();
+        const notesJson = this.notebook.toPrettyJSON(2);
+
+        return [
+            "=== 🔒 环境上下文 (只读区域 - 不可修改) ===",
+            `[Current Time]: ${now}`,
+            `[Current WorkDir]: ${cwd}`,
+            `[User Last Query]: ${lastQuery}`,
+            "[Tool Guide]:",
+            "- 使用 add_note 新增笔记",
+            "- 使用 update_note 更新笔记 (支持修改 tags 状态)",
+            "- 使用 delete_note 删除不再需要的笔记",
+            "",
+            "=== 📝 你的草稿本 (可编辑区域 - Notebook) ===",
+            "这是你的短期工作记忆，用于记录关键线索、任务规划或状态（不是对话存档）。",
+            "Notebook 使用约束：",
+            "- 禁止：把给用户的最终回复全文写入 Notebook；把整段对话/长篇推理写入 Notebook。",
+            "- 只记录关键片段：关键事实/约束、后续要复用的信息、3-7 条以内的工作计划、状态变化。",
+            "- key 用语义化名称；tags 用于 TODO/IN_PROGRESS/DONE、Verified/Uncertain、Source:* 等维度。",
+            "示例（好的笔记更像便签而不是正文）：",
+            "- key: plan_v1 | title: 执行计划 | content: 1) 先 outline 再 grep 2) 实现 notebook 工具 3) 加入 prompt 注入 | tags: [TODO]",
+            "当前存储的笔记 (JSON格式):",
+            notesJson,
+            "",
+            "==============================================",
+        ].join("\n");
+    }
+
+    private buildRequestMessages(): ChatCompletionMessageParam[] {
+        const dynamicSystem: ChatCompletionMessageParam = {
+            role: "system",
+            content: this.buildDynamicNotebookSystemText(),
+        };
+
+        const history = this.conversationHistory;
+
+        // Insert the dynamic block right before the latest user query (as requested).
+        const lastUserIdx = (() => {
+            for (let i = history.length - 1; i >= 0; i--) {
+                if (history[i]?.role === "user") return i;
+            }
+            return -1;
+        })();
+
+        if (lastUserIdx >= 0) {
+            return [...history.slice(0, lastUserIdx), dynamicSystem, ...history.slice(lastUserIdx)];
+        }
+
+        // No user message yet: place dynamic block after the base system prompt (if present).
+        if (history[0]?.role === "system") {
+            return [history[0], dynamicSystem, ...history.slice(1)];
+        }
+        return [dynamicSystem, ...history];
     }
 
     /**
@@ -102,7 +194,7 @@ export class ChatRunner {
     private buildChatRequest() {
         return {
             model: this.model,
-            messages: this.conversationHistory,
+            messages: this.buildRequestMessages(),
             tools: this.toolSystem.toOpenAITools(),
             tool_choice: "auto" as const,
             // temperature: 0,

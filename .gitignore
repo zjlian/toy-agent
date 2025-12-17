@@ -31,6 +31,9 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 .cache
 *.tsbuildinfo
 
+# toy-agent local data (project-local cache, etc.)
+.toyagent/
+
 # IntelliJ based IDEs
 .idea
 
