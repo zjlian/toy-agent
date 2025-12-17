@@ -18,7 +18,7 @@ import { clearCommand } from "./commands/clear";
 import { exitCommand } from "./commands/exit";
 import { toolsCommand } from "./commands/tools";
 import { saveCommand } from "./commands/save";
-import { bindQuestionToolUI, questionTool } from "./tools/question";
+import { questionTool } from "./tools/question";
 
 const envSchema = z.object({
     TOY_API_KEY: z.string().min(1),
@@ -41,7 +41,7 @@ ensureSystemPrompt(conversationHistory);
 
 
 // 工具系统（OpenAI tool calling）
-const toolSystem = new ToolSystem()
+const toolSystem = new ToolSystem<ChatContext>()
     .register(getTimeTool)
     .register(pwdTool)
     .register(lsTool)
@@ -60,7 +60,6 @@ commandSystem.register(clearCommand).register(exitCommand).register(toolsCommand
 
 async function main() {
     const ui = new CliUI();
-    bindQuestionToolUI(ui);
     ui.printBanner({ model: env.TOY_MODEL });
 
     try {

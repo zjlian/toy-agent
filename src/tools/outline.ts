@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import { encodingForModel, getEncoding, type Tiktoken } from "js-tiktoken";
 import { type Tool } from "./tool_system";
+import type { ChatContext } from "../chat_runner";
 
 const OUTLINE_SYSTEM_PROMPT = `
 You are a precise Code Outline Extractor.
@@ -43,37 +44,6 @@ export function login(user: User): Promise<boolean> { ... }
 `;
 
 const MAX_CONTEXT_TOKENS = 100_000;
-
-function toOneLine(text: string): string {
-    // Keep streaming output compact in a single terminal line.
-    // - Replace newlines with spaces
-    // - Collapse repeated whitespace
-    return text.replace(/\r?\n/g, " ").replace(/\s+/g, " ");
-}
-
-function createRollingLineWriter(options: { prefix: string; window: number }) {
-    const prefix = options.prefix;
-    const window = options.window;
-    let buffer = "";
-
-    const write = (chunk: string) => {
-        if (!chunk) return;
-        buffer += chunk;
-        // Prevent unbounded growth from extremely long generations.
-        if (buffer.length > window * 50) buffer = buffer.slice(-window * 50);
-
-        const view = buffer.slice(-window);
-        // Overwrite the same terminal line, padding to fully clear previous output.
-        process.stdout.write(`\r${prefix}${view.padEnd(window, " ")}`);
-    };
-
-    const end = () => {
-        // Move to next line after streaming.
-        process.stdout.write("\n");
-    };
-
-    return { write, end };
-}
 
 function normalizePath(value: unknown): string {
     return typeof value === "string" ? value.trim() : "";
@@ -128,7 +98,7 @@ function countTokens(encoder: Tiktoken, text: string): number {
     return encoder.encode(text).length;
 }
 
-export const outlineTool: Tool = {
+export const outlineTool: Tool<ChatContext> = {
     name: "outline",
     description:
         "Generate a structured Markdown outline for a source file (types/globals/classes/structs/functions) via a dedicated LLM call.",
@@ -140,7 +110,7 @@ export const outlineTool: Tool = {
         required: ["path"],
         additionalProperties: false,
     },
-    handler: async (args) => {
+    handler: async (ctx, args) => {
         const rawPath = normalizePath(args.path);
         if (!rawPath) return "Error: 'path' is required";
 
@@ -165,13 +135,11 @@ export const outlineTool: Tool = {
         }
         if (content.includes("\0")) return `Error: '${rawPath}' appears to be a binary file (NUL byte found)`;
 
-        const apiKey = process.env.TOY_API_KEY;
-        const baseURL = process.env.TOY_BASE_URL;
         const fastModel = process.env.TOY_FAST_MODEL?.trim();
-        const model = fastModel || process.env.TOY_MODEL;
-
-        if (!apiKey || !baseURL || !model) {
-            return "Error: missing environment variables. Require TOY_API_KEY, TOY_BASE_URL, and (TOY_MODEL or TOY_FAST_MODEL).";
+        const model = fastModel || ctx.model;
+        console.log("model", model);
+        if (!model) {
+            return "Error: missing model for outline tool. Ensure TOY_FAST_MODEL or the main model is configured.";
         }
 
         const fenceLang = guessFenceLanguage(rawPath);
@@ -196,11 +164,8 @@ export const outlineTool: Tool = {
         }
 
         try {
-            const client = new OpenAI({ apiKey, baseURL });
+            const client = ctx.client;
 
-            // Stream the LLM response and print it (including reasoning/CoT) as it arrives.
-            // Note: The tool's returned value remains the *final outline content* (no reasoning),
-            // but we still print the reasoning stream for observability.
             const stream: any = await client.chat.completions.create({
                 model,
                 messages: [
@@ -209,46 +174,14 @@ export const outlineTool: Tool = {
                 ],
                 temperature: 0.7,
                 stream: true,
+                extra_body: {
+                    "thinking": {
+                        type: "disabled",
+                    },
+                }
             } as any);
 
-            let reasoning = "";
-            let contentOut = "";
-
-            const rolling = createRollingLineWriter({ prefix: "[outline stream] ", window: 80 });
-            let emittedThinkingMarker = false;
-            let emittedOutlineMarker = false;
-            let wroteAnything = false;
-
-            for await (const chunk of stream) {
-                const delta = chunk?.choices?.[0]?.delta ?? {};
-
-                const reasoningDelta: unknown =
-                    (delta as any).reasoning_content ??
-                    (delta as any).reasoning ??
-                    (delta as any).thinking;
-                if (typeof reasoningDelta === "string" && reasoningDelta.length) {
-                    reasoning += reasoningDelta;
-                    if (!emittedThinkingMarker) {
-                        rolling.write("[T] ");
-                        emittedThinkingMarker = true;
-                    }
-                    rolling.write(toOneLine(reasoningDelta));
-                    wroteAnything = true;
-                }
-
-                const contentDelta: unknown = (delta as any).content;
-                if (typeof contentDelta === "string" && contentDelta.length) {
-                    contentOut += contentDelta;
-                    if (!emittedOutlineMarker) {
-                        rolling.write("[O] ");
-                        emittedOutlineMarker = true;
-                    }
-                    rolling.write(toOneLine(contentDelta));
-                    wroteAnything = true;
-                }
-            }
-
-            if (wroteAnything) rolling.end();
+            const { content: contentOut } = await ctx.ui.previewStream("outline stream", stream);
 
             if (!contentOut.trim()) return "Error: no outline returned by the model";
             return contentOut.trim();
@@ -257,4 +190,3 @@ export const outlineTool: Tool = {
         }
     },
 };
-

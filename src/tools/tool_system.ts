@@ -8,12 +8,12 @@
 
 import { type ChatRequest } from "../llm_client";
 
-export interface Tool {
+export interface Tool<Ctx> {
     name: string;
     description: string;
     /** JSON Schema */
     parameters: Record<string, any>;
-    handler: (args: Record<string, any>) => Promise<string>;
+    handler: (ctx: Ctx, args: Record<string, any>) => Promise<string>;
 }
 
 /** The exact OpenAI request `tools` type (keeps us aligned with the SDK). */
@@ -43,10 +43,10 @@ function safeJsonParse(value: string): { ok: true; data: any } | { ok: false; er
     }
 }
 
-export class ToolSystem {
-    private readonly tools = new Map<string, Tool>();
+export class ToolSystem<Ctx> {
+    private readonly tools = new Map<string, Tool<Ctx>>();
 
-    register(tool: Tool): this {
+    register(tool: Tool<Ctx>): this {
         const name = tool.name.trim();
         if (!name) throw new Error("Tool name cannot be empty");
         if (this.tools.has(name)) throw new Error(`Tool already registered: ${name}`);
@@ -54,7 +54,7 @@ export class ToolSystem {
         return this;
     }
 
-    list(): Tool[] {
+    list(): Tool<Ctx>[] {
         return Array.from(this.tools.values());
     }
 
@@ -69,11 +69,11 @@ export class ToolSystem {
         }));
     }
 
-    async execute(toolName: string, args: Record<string, any>): Promise<string> {
+    async execute(toolName: string, ctx: Ctx, args: Record<string, any>): Promise<string> {
         const tool = this.tools.get(toolName);
         if (!tool) return `Error: unknown tool '${toolName}'`;
         try {
-            return await tool.handler(args);
+            return await tool.handler(ctx, args);
         } catch (err) {
             return `Error: tool '${toolName}' failed - ${err instanceof Error ? err.message : String(err)}`;
         }
@@ -83,7 +83,7 @@ export class ToolSystem {
      * Executes a batch of tool calls and returns tool-result messages
      * (to be appended to the conversation history).
      */
-    async handleToolCalls(toolCalls: ToolCallLike[]): Promise<ToolResultMessageLike[]> {
+    async handleToolCalls(toolCalls: ToolCallLike[], ctx: Ctx): Promise<ToolResultMessageLike[]> {
         const results: ToolResultMessageLike[] = [];
         for (const call of toolCalls) {
             const name = call.function?.name;
@@ -95,7 +95,7 @@ export class ToolSystem {
 
             const output = parseError
                 ? `Error: invalid JSON arguments for tool '${name}': ${parseError}`
-                : await this.execute(name, args);
+                : await this.execute(name, ctx, args);
 
             results.push({
                 role: "tool",

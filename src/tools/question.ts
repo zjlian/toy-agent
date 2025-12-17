@@ -1,14 +1,7 @@
-import * as readline from "node:readline";
-import { type ChatUI } from "../cli_ui";
 import { type Tool } from "./tool_system";
+import type { ChatContext } from "../chat_runner";
 
 const MAX_SUGGESTIONS = 4;
-
-let boundUI: ChatUI | null = null;
-
-export function bindQuestionToolUI(ui: ChatUI | null): void {
-    boundUI = ui;
-}
 
 type SuggestionsResult = { values: string[]; truncated: boolean };
 
@@ -35,42 +28,18 @@ function normalizeSuggestions(value: unknown): SuggestionsResult {
 function formatPrompt(question: string, suggestions: string[], truncated: boolean): string {
     const lines = [question];
     if (suggestions.length) {
-        lines.push("", "推荐答案：");
+        lines.push("", "参考回复：");
         suggestions.forEach((opt, idx) => {
             lines.push(`${idx + 1}. ${opt}`);
         });
         if (truncated) {
-            lines.push("(提示：推荐答案已根据上限截断，仅显示前 4 个)");
+            lines.push("(提示：参考回复已根据上限截断，仅显示前 4 个)");
         }
     }
     return lines.join("\n");
 }
 
-async function askViaUI(question: string, suggestions: string[], truncated: boolean): Promise<string> {
-    const ui = boundUI;
-    if (!ui) return askViaReadline(question, suggestions, truncated);
-
-    ui.printSystem(formatPrompt(question, suggestions, truncated));
-    const answer = await ui.promptUser();
-    return answer.trim();
-}
-
-async function askViaReadline(question: string, suggestions: string[], truncated: boolean): Promise<string> {
-    const promptText = formatPrompt(question, suggestions, truncated);
-    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-    return new Promise<string>((resolve) => {
-        rl.question(`${promptText}\n> `, (answer) => {
-            rl.close();
-            resolve(answer.trim());
-        });
-    });
-}
-
-async function askUser(question: string, suggestions: string[], truncated: boolean): Promise<string> {
-    return askViaUI(question, suggestions, truncated);
-}
-
-export const questionTool: Tool = {
+export const questionTool: Tool<ChatContext> = {
     name: "question",
     description:
         "向真实用户发起提问，等待其输入回复。可选传入不超过 4 个推荐答案以辅助判断，返回用户的实际回答。",
@@ -88,14 +57,17 @@ export const questionTool: Tool = {
         required: ["question"],
         additionalProperties: false,
     },
-    handler: async (args) => {
+    handler: async (ctx, args) => {
         const question = normalizeQuestion(args.question);
         if (!question) {
             return "Error: 'question' is required and must be a non-empty string";
         }
 
         const { values: suggestions, truncated } = normalizeSuggestions(args.suggestions);
-        const answer = await askUser(question, suggestions, truncated);
+        const prompt = formatPrompt(question, suggestions, truncated);
+        ctx.ui.printSystem(prompt);
+        const answerRaw = await ctx.ui.promptUser();
+        const answer = answerRaw.trim();
 
         const payload = {
             question,

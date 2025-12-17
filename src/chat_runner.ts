@@ -10,7 +10,7 @@ export type ChatContext = {
     model: string;
     conversationHistory: ChatCompletionMessageParam[];
     ui: ChatUI;
-    toolSystem: ToolSystem;
+    toolSystem: ToolSystem<ChatContext>;
 };
 
 export type ChatRunnerOptions = {
@@ -18,7 +18,7 @@ export type ChatRunnerOptions = {
     model: string;
     conversationHistory: ChatCompletionMessageParam[];
     commandSystem: CommandSystem<ChatContext>;
-    toolSystem: ToolSystem;
+    toolSystem: ToolSystem<ChatContext>;
     ui: ChatUI;
     maxToolRounds?: number;
 };
@@ -28,7 +28,7 @@ export class ChatRunner {
     private readonly model: string;
     private readonly conversationHistory: ChatCompletionMessageParam[];
     private readonly commandSystem: CommandSystem<ChatContext>;
-    private readonly toolSystem: ToolSystem;
+    private readonly toolSystem: ToolSystem<ChatContext>;
     private readonly ui: ChatUI;
     private readonly maxToolRounds: number;
 
@@ -163,7 +163,8 @@ export class ChatRunner {
      * 这样模型在下一轮推理时就能看到工具输出，从而继续推理或给出最终回答。
      */
     private async appendToolResults(toolCalls: ToolCallLike[]): Promise<void> {
-        const results = await this.toolSystem.handleToolCalls(toolCalls);
+        const ctx = this.createChatContext();
+        const results = await this.toolSystem.handleToolCalls(toolCalls, ctx);
         for (const r of results) {
             // Tool results are request-side message params, so we can push without `any`.
             this.conversationHistory.push({
@@ -286,4 +287,3 @@ export class ChatRunner {
         }
     }
 }
-

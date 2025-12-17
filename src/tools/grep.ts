@@ -1,4 +1,5 @@
 import { type Tool } from "./tool_system";
+import type { ChatContext } from "../chat_runner";
 import { globby } from "globby";
 import * as pathMod from "node:path";
 import * as fs from "node:fs/promises";
@@ -7,7 +8,7 @@ function escapeRegex(string: string) {
     return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-export const grepTool: Tool = {
+export const grepTool: Tool<ChatContext> = {
     name: "grep",
     description: "Search for patterns in files. Supports regex, gitignore, context lines, and searching specific files or directories.",
     parameters: {
@@ -23,7 +24,7 @@ export const grepTool: Tool = {
         required: ["pattern"],
         additionalProperties: false,
     },
-    handler: async (args) => {
+    handler: async (_ctx, args) => {
         const patternRaw = args.pattern;
         if (!patternRaw) return "Error: pattern is required";
 

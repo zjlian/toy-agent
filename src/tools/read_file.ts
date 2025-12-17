@@ -1,6 +1,7 @@
 import { type Tool } from "./tool_system";
+import type { ChatContext } from "../chat_runner";
 
-export const readFileTool: Tool = {
+export const readFileTool: Tool<ChatContext> = {
     name: "read_file",
     description: "Read a text file. Supports absolute/relative path. Optionally specify start_line (1-based) and line_count.",
     parameters: {
@@ -13,7 +14,7 @@ export const readFileTool: Tool = {
         required: ["path"],
         additionalProperties: false,
     },
-    handler: async (args) => {
+    handler: async (_ctx, args) => {
         const { readFile, stat } = await import("node:fs/promises");
         const pathMod = await import("node:path");
 
@@ -75,4 +76,3 @@ export const readFileTool: Tool = {
         return [header, body].join("\n");
     },
 };
-

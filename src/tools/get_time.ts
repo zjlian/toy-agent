@@ -1,4 +1,5 @@
 import { type Tool } from "./tool_system";
+import type { ChatContext } from "../chat_runner";
 
 function formatLocalISOString(date: Date): string {
     const pad = (n: number, width = 2) => String(n).padStart(width, "0");
@@ -22,7 +23,7 @@ function formatLocalISOString(date: Date): string {
     return `${year}-${month}-${day}T${hour}:${minute}:${second}.${ms}${sign}${offsetHH}:${offsetMM}`;
 }
 
-export const getTimeTool: Tool = {
+export const getTimeTool: Tool<ChatContext> = {
     name: "get_time",
     description: "Get current local time as an ISO 8601 string (includes timezone offset).",
     parameters: {
@@ -32,4 +33,3 @@ export const getTimeTool: Tool = {
     },
     handler: async () => formatLocalISOString(new Date()),
 };
-

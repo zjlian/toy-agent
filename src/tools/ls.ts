@@ -1,8 +1,9 @@
 import { type Tool } from "./tool_system";
+import type { ChatContext } from "../chat_runner";
 import { globby } from "globby";
 import * as pathMod from "node:path";
 
-export const lsTool: Tool = {
+export const lsTool: Tool<ChatContext> = {
     name: "ls",
     description: "List directory entries. Supports optional depth-based traversal, entry limit, gitignore filtering, and hidden files.",
     parameters: {
@@ -17,7 +18,7 @@ export const lsTool: Tool = {
         required: [],
         additionalProperties: false,
     },
-    handler: async (args) => {
+    handler: async (_ctx, args) => {
         const root = typeof args.path === "string" && args.path.trim() ? args.path.trim() : ".";
 
         // 参数归一化

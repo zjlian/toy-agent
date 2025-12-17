@@ -10,6 +10,7 @@ export interface ChatUI {
     printToolResult(name: string, output: string): void;
     printSystem(text: string): void;
     printError(text: string): void;
+    previewStream(title: string, stream: AsyncIterable<any>): Promise<{ reasoning: string; content: string }>;
     close(): void;
 }
 
@@ -75,6 +76,76 @@ export class CliUI implements ChatUI {
 
     printError(text: string): void {
         this.printBox("Error", text, (s) => this.bold(this.c(ANSI.red, s)));
+    }
+
+    async previewStream(title: string, stream: AsyncIterable<any>): Promise<{ reasoning: string; content: string }> {
+        const prefix = `[${title}] `;
+        const window = 80;
+
+        let buffer = "";
+        let pendingLine = "";
+        let reasoning = "";
+        let content = "";
+        let emittedThinkingMarker = false;
+        let emittedOutlineMarker = false;
+
+        const flushLine = (line: string) => {
+            const cols = typeof process.stdout.columns === "number" && process.stdout.columns > 0 ? process.stdout.columns : window;
+            const maxTextWidth = Math.max(10, cols - prefix.length);
+            const text = previewToOneLine(line);
+            const truncated = sliceToDisplayWidth(text, maxTextWidth);
+            const padLen = Math.max(0, maxTextWidth - stringDisplayWidth(truncated));
+            const padded = truncated + " ".repeat(padLen);
+            process.stdout.write(`\x1b[2K\r${prefix}${padded}`);
+        };
+
+        for await (const chunk of stream as any) {
+            const delta = (chunk as any)?.choices?.[0]?.delta ?? {};
+
+            const reasoningDelta: unknown =
+                (delta as any).reasoning_content ??
+                (delta as any).reasoning ??
+                (delta as any).thinking;
+            if (typeof reasoningDelta === "string" && reasoningDelta.length) {
+                reasoning += reasoningDelta;
+                if (!emittedThinkingMarker) {
+                    pendingLine += "[T] ";
+                    emittedThinkingMarker = true;
+                }
+                buffer += reasoningDelta;
+            }
+
+            const contentDelta: unknown = (delta as any).content;
+            if (typeof contentDelta === "string" && contentDelta.length) {
+                content += contentDelta;
+                if (!emittedOutlineMarker) {
+                    pendingLine += "[O] ";
+                    emittedOutlineMarker = true;
+                }
+                buffer += contentDelta;
+            }
+
+            while (true) {
+                const idx = buffer.indexOf("\n");
+                if (idx === -1) break;
+                pendingLine += buffer.slice(0, idx);
+                buffer = buffer.slice(idx + 1);
+                if (pendingLine) {
+                    flushLine(pendingLine);
+                    pendingLine = "";
+                }
+            }
+        }
+
+        if (buffer || pendingLine) {
+            pendingLine += buffer;
+            if (pendingLine) {
+                flushLine(pendingLine);
+            }
+        }
+        process.stdout.write("\n\n");
+
+        return { reasoning, content };
     }
 
     close(): void {
@@ -175,4 +246,59 @@ function truncateForDisplay(text: string, options?: TruncateOptions): { text: st
     }
 
     return { text: out, truncated };
+}
+
+function isCombining(codePoint: number): boolean {
+    return (
+        (codePoint >= 0x0300 && codePoint <= 0x036f) ||
+        (codePoint >= 0x1ab0 && codePoint <= 0x1aff) ||
+        (codePoint >= 0x1dc0 && codePoint <= 0x1dff) ||
+        (codePoint >= 0x20d0 && codePoint <= 0x20ff) ||
+        (codePoint >= 0xfe20 && codePoint <= 0xfe2f)
+    );
+}
+
+function isFullwidth(codePoint: number): boolean {
+    return (
+        (codePoint >= 0x1100 && codePoint <= 0x115f) ||
+        codePoint === 0x2329 ||
+        codePoint === 0x232a ||
+        (codePoint >= 0x2e80 && codePoint <= 0xa4cf) ||
+        (codePoint >= 0xac00 && codePoint <= 0xd7a3) ||
+        (codePoint >= 0xf900 && codePoint <= 0xfaff) ||
+        (codePoint >= 0xfe10 && codePoint <= 0xfe19) ||
+        (codePoint >= 0xfe30 && codePoint <= 0xfe6f) ||
+        (codePoint >= 0xff00 && codePoint <= 0xff60) ||
+        (codePoint >= 0xffe0 && codePoint <= 0xffe6)
+    );
+}
+
+function stringDisplayWidth(text: string): number {
+    let width = 0;
+    for (let i = 0; i < text.length; ) {
+        const cp = text.codePointAt(i)!;
+        i += cp > 0xffff ? 2 : 1;
+        if (isCombining(cp)) continue;
+        width += isFullwidth(cp) ? 2 : 1;
+    }
+    return width;
+}
+
+function sliceToDisplayWidth(text: string, maxWidth: number): string {
+    let out = "";
+    let width = 0;
+    for (let i = 0; i < text.length; ) {
+        const cp = text.codePointAt(i)!;
+        const char = String.fromCodePoint(cp);
+        const w = isCombining(cp) ? 0 : (isFullwidth(cp) ? 2 : 1);
+        if (width + w > maxWidth) break;
+        out += char;
+        width += w;
+        i += cp > 0xffff ? 2 : 1;
+    }
+    return out;
+}
+
+function previewToOneLine(text: string): string {
+    return text.replace(/\r?\n/g, " ").replace(/\s+/g, " ");
 }
