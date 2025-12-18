@@ -120,6 +120,7 @@ export class ChatRunner {
             "- 使用 add_note 新增笔记",
             "- 使用 update_note 更新笔记 (支持修改 tags 状态)",
             "- 使用 delete_note 删除不再需要的笔记",
+            "- 当你想要输出最终回复时，先使用 question 工具与用户对齐需求，确认无误后再输出",
             "",
             "=== 📝 你的草稿本 (可编辑区域 - Notebook) ===",
             "这是你的短期工作记忆，用于记录关键线索、任务规划或状态（不是对话存档）。",
@@ -144,23 +145,20 @@ export class ChatRunner {
 
         const history = this.conversationHistory;
 
-        // Insert the dynamic block right before the latest user query (as requested).
-        const lastUserIdx = (() => {
-            for (let i = history.length - 1; i >= 0; i--) {
-                if (history[i]?.role === "user") return i;
+        if (history.length === 0) {
+            return [dynamicSystem];
+        }
+
+        if (history.length === 1) {
+            const only = history[0]!;
+            if (only.role === "system") {
+                return [only, dynamicSystem];
             }
-            return -1;
-        })();
-
-        if (lastUserIdx >= 0) {
-            return [...history.slice(0, lastUserIdx), dynamicSystem, ...history.slice(lastUserIdx)];
+            return [dynamicSystem, only];
         }
 
-        // No user message yet: place dynamic block after the base system prompt (if present).
-        if (history[0]?.role === "system") {
-            return [history[0], dynamicSystem, ...history.slice(1)];
-        }
-        return [dynamicSystem, ...history];
+        const insertIdx = history.length - 1;
+        return [...history.slice(0, insertIdx), dynamicSystem, ...history.slice(insertIdx)];
     }
 
     /**
