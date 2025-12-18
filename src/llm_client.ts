@@ -20,9 +20,12 @@ async function appendDebugLog(payload: unknown): Promise<void> {
     const logPath = resolve(process.cwd(), "debug.log");
     const timestamp = new Date().toISOString();
 
-    // Best-effort logging: never fail the request due to logging issues.
     try {
-        const body = JSON.stringify(payload, null, 2);
+        const body = JSON.stringify(
+            payload,
+            (key, value) => (key === "tools" ? undefined : value),
+            2
+        );
         await appendFile(
             logPath,
             `\n----- ${timestamp} | LLM Request Payload -----\n${body}\n`,
