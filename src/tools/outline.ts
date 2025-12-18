@@ -119,6 +119,7 @@ export const outlineTool: Tool<ChatContext> = {
         const pathMod = await import("node:path");
 
         const resolvedPath = pathMod.isAbsolute(rawPath) ? pathMod.normalize(rawPath) : pathMod.resolve(rawPath);
+        const relativePath = pathMod.relative(process.cwd(), resolvedPath);
 
         let st: { isFile(): boolean };
         try {
@@ -136,9 +137,8 @@ export const outlineTool: Tool<ChatContext> = {
         }
         if (content.includes("\0")) return `Error: '${rawPath}' appears to be a binary file (NUL byte found)`;
 
-        // --- cache lookup (project-local, content-hash only) ---
         const cache = createOutlineCache();
-        const cached = await cache.get(content);
+        const cached = await cache.get(relativePath, content);
         if (cached) return cached;
 
         const fastModel = process.env.TOY_FAST_MODEL?.trim();
@@ -191,8 +191,7 @@ export const outlineTool: Tool<ChatContext> = {
 
             if (!contentOut.trim()) return "Error: no outline returned by the model";
             const out = contentOut.trim();
-            // Best-effort cache write. Never affects the tool's final output.
-            await cache.set(content, out);
+            await cache.set(relativePath, content, out);
             return out;
         } catch (err) {
             return `Error: outline LLM call failed - ${err instanceof Error ? err.message : String(err)}`;

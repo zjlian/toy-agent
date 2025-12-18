@@ -2,26 +2,19 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
-/**
- * Outline file cache (project-local).
- *
- * Policy (as confirmed):
- * - key: sha256(file_content) only (ignore model/path)
- * - value: plain text outline only
- * - valid: cache file exists and is readable
- * - location: ./.toyagent/cache/outline/{sha256}.cache (relative to process.cwd())
- * - failure: best-effort; any read/write error should behave like cache-miss.
- */
-
 export type OutlineCache = {
-    get(content: string): Promise<string | null>;
-    set(content: string, outline: string): Promise<void>;
+    get(relativePath: string, content: string): Promise<string | null>;
+    set(relativePath: string, content: string, outline: string): Promise<void>;
 };
 
 const CACHE_DIR = resolve(process.cwd(), ".toyagent", "cache", "outline");
 
 function sha256Hex(text: string): string {
     return createHash("sha256").update(Buffer.from(text, "utf8")).digest("hex");
+}
+
+function md5Hex(text: string): string {
+    return createHash("md5").update(Buffer.from(text, "utf8")).digest("hex");
 }
 
 function cachePathForKey(key: string): string {
@@ -64,35 +57,38 @@ async function atomicWriteText(targetPath: string, text: string): Promise<void> 
 
 export function createOutlineCache(): OutlineCache {
     return {
-        async get(content: string): Promise<string | null> {
-            const key = sha256Hex(content);
+        async get(relativePath: string, content: string): Promise<string | null> {
+            const key = md5Hex(relativePath);
             const p = cachePathForKey(key);
 
             try {
                 if (!(await fileExists(p))) return null;
                 const cached = await readFile(p, "utf8");
-                const out = cached.trim();
+                const [firstLine, , ...rest] = cached.split(/\r?\n/);
+                const expectedSha = firstLine?.trim();
+                if (!expectedSha) return null;
+                const actualSha = sha256Hex(content);
+                if (expectedSha !== actualSha) return null;
+                const out = rest.join("\n").trim();
                 return out ? out : null;
             } catch {
-                // Treat any error as cache miss.
                 return null;
             }
         },
 
-        async set(content: string, outline: string): Promise<void> {
+        async set(relativePath: string, content: string, outline: string): Promise<void> {
             const out = outline.trim();
             if (!out) return;
 
-            const key = sha256Hex(content);
+            const key = md5Hex(relativePath);
             const p = cachePathForKey(key);
+            const payload = `${sha256Hex(content)}\n\n${out}\n`;
 
             try {
                 await ensureCacheDir();
-                await atomicWriteText(p, out);
+                await atomicWriteText(p, payload);
             } catch {
-                // Best-effort: never fail the tool due to caching.
             }
         },
     };
 }
-
