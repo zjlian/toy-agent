@@ -72,6 +72,29 @@ bun run src/index.ts
 - `TOY_API_KEY`：您的 API 身份验证密钥
 - `TOY_BASE_URL`：API 端点的基础 URL
 - `TOY_MODEL`：用于对话的 AI 模型
+- `TOY_FAST_MODEL`（可选）：某些工具（如 outline）需要的快速补充模型
+
+## 配置管理（/config）
+
+命令行运行后输入 `/config` 可以使用交互式向导（基于 `@inquirer/prompts`）管理多套 LLM 接入信息：
+
+1. **新增**：设置 `BASE_URL`、`API_KEY`、`MODEL`、`FAST_MODEL`。任意字段留空则回退到环境变量。
+2. **修改 / 删除**：选择已有配置进行调整或移除，删除会自动切换到其余配置或环境变量。
+3. **激活**：选择某一配置生效，或切换成“仅使用环境变量”。
+4. **查看**：摘要展示当前激活配置、生效字段来源以及配置文件路径。
+
+配置优先级：
+
+1. 当前激活的配置文件字段
+2. 环境变量（`TOY_*`）
+
+配置文件在各平台的默认位置：
+
+- **Windows**：`%APPDATA%/toy-agent/config.json`
+- **macOS**：`~/Library/Application Support/toy-agent/config.json`
+- **Linux / 其他 Unix**：`${XDG_CONFIG_HOME:-~/.config}/toy-agent/config.json`
+
+运行中修改配置会即时刷新连接的 LLM Client（无需重启 CLI）。
 
 ## 安全提示
 

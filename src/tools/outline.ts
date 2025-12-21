@@ -141,9 +141,8 @@ export const outlineTool: Tool<ChatContext> = {
         const cached = await cache.get(relativePath, content);
         if (cached) return cached;
 
-        const fastModel = process.env.TOY_FAST_MODEL?.trim();
+        const fastModel = ctx.fastModel?.trim();
         const model = fastModel || ctx.model;
-        console.log("model", model);
         if (!model) {
             return "Error: missing model for outline tool. Ensure TOY_FAST_MODEL or the main model is configured.";
         }

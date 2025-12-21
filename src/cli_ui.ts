@@ -15,21 +15,18 @@ export interface ChatUI {
     printError(text: string): void;
     previewStream(title: string, stream: AsyncIterable<any>): Promise<{ reasoning: string; content: string }>;
     close(): void;
+    resetPrompt?(): void;
 }
 
 type TruncateOptions = { maxChars?: number; maxLines?: number };
 
 export class CliUI implements ChatUI {
-    private readonly rl: readline.Interface;
+    private rl: readline.Interface;
     private readonly supportsColor = Boolean(process.stdout.isTTY);
     private currentStreamState: "reasoning" | "content" | null = null;
 
     constructor() {
-        this.rl = readline.createInterface({
-            input: process.stdin,
-            output: process.stdout,
-            terminal: true,
-        });
+        this.rl = this.createInterface();
     }
 
     printBanner(meta?: { model?: string }) {
@@ -167,12 +164,25 @@ export class CliUI implements ChatUI {
         this.rl.close();
     }
 
+    resetPrompt(): void {
+        this.rl.close();
+        this.rl = this.createInterface();
+    }
+
     // -------------------------
     // rendering internals
     // -------------------------
 
     private c(code: string, text: string): string {
         return this.supportsColor ? `${code}${text}${ANSI.reset}` : text;
+    }
+
+    private createInterface(): readline.Interface {
+        return readline.createInterface({
+            input: process.stdin,
+            output: process.stdout,
+            terminal: true,
+        });
     }
 
     private dim(text: string): string {

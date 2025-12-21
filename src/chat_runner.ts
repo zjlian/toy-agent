@@ -5,24 +5,33 @@ import { type CommandAction, type CommandSystem } from "./commands/command_syste
 import { type ToolCallLike, ToolSystem } from "./tools/tool_system";
 import { type ChatUI } from "./cli_ui";
 import { Notebook } from "./notebook/notebook";
+import { type RuntimeConfigService } from "./config/runtime_config";
+
+export type LLMRuntime = {
+    client: OpenAI;
+    primaryModel: string;
+    fastModel?: string;
+};
 
 export type ChatContext = {
     client: OpenAI;
     model: string;
+    fastModel?: string;
     conversationHistory: ChatCompletionMessageParam[];
     ui: ChatUI;
     toolSystem: ToolSystem<ChatContext>;
     notebook: Notebook;
+    runtimeConfig: RuntimeConfigService;
 };
 
 export type ChatRunnerOptions = {
-    client: OpenAI;
-    model: string;
+    llm: LLMRuntime;
     conversationHistory: ChatCompletionMessageParam[];
     commandSystem: CommandSystem<ChatContext>;
     toolSystem: ToolSystem<ChatContext>;
     ui: ChatUI;
     notebook: Notebook;
+    runtimeConfig: RuntimeConfigService;
     maxToolRounds?: number;
 };
 
@@ -35,14 +44,14 @@ type StreamedAssistantMessage = Omit<ChatCompletionMessageParam, "tool_calls"> &
 type StreamReadyChatRequest = Omit<ChatStreamRequest, "stream">;
 
 export class ChatRunner {
-    private readonly client: OpenAI;
-    private readonly model: string;
+    private llm: LLMRuntime;
     private readonly conversationHistory: ChatCompletionMessageParam[];
     private readonly commandSystem: CommandSystem<ChatContext>;
     private readonly toolSystem: ToolSystem<ChatContext>;
     private readonly ui: ChatUI;
     private readonly maxToolRounds: number;
     private readonly notebook: Notebook;
+    private readonly runtimeConfig: RuntimeConfigService;
 
     /**
      * 构造并初始化 ChatRunner。
@@ -51,14 +60,18 @@ export class ChatRunner {
      * 并设置工具调用的最大轮数上限（避免陷入无限 tool loop）。
      */
     constructor(options: ChatRunnerOptions) {
-        this.client = options.client;
-        this.model = options.model;
+        this.llm = options.llm;
         this.conversationHistory = options.conversationHistory;
         this.commandSystem = options.commandSystem;
         this.toolSystem = options.toolSystem;
         this.ui = options.ui;
         this.notebook = options.notebook;
         this.maxToolRounds = options.maxToolRounds ?? 100;
+        this.runtimeConfig = options.runtimeConfig;
+    }
+
+    updateLLMRuntime(runtime: LLMRuntime): void {
+        this.llm = runtime;
     }
 
     /**
@@ -68,12 +81,14 @@ export class ChatRunner {
      */
     private createChatContext(): ChatContext {
         return {
-            client: this.client,
-            model: this.model,
+            client: this.llm.client,
+            model: this.llm.primaryModel,
+            fastModel: this.llm.fastModel,
             conversationHistory: this.conversationHistory,
             ui: this.ui,
             toolSystem: this.toolSystem,
             notebook: this.notebook,
+            runtimeConfig: this.runtimeConfig,
         };
     }
 
@@ -157,8 +172,27 @@ export class ChatRunner {
             return [dynamicSystem, only];
         }
 
-        const insertIdx = history.length - 1;
-        return [...history.slice(0, insertIdx), dynamicSystem, ...history.slice(insertIdx)];
+        const insertIdx = this.resolveDynamicSystemInsertIndex(history);
+        const messages = history.slice();
+        messages.splice(insertIdx, 0, dynamicSystem);
+        return messages;
+    }
+
+    /**
+     * 计算 Notebook 动态 system 文本的插入位置，避免拆散 assistant/tool 消息对。
+     *
+     * - 若最后一条消息就是 user，则保持原有行为：插在最后一个 user 之前。
+     * - 若最后一个 user 之后还有 assistant/tool 消息，则插在 user 之后，确保 tool 消息仍紧跟其触发的 assistant。
+     * - 若没有 user 消息，则退化为附加在末尾。
+     */
+    private resolveDynamicSystemInsertIndex(history: ChatCompletionMessageParam[]): number {
+        for (let i = history.length - 1; i >= 0; i--) {
+            const msg = history[i];
+            if (msg?.role === "user") {
+                return i === history.length - 1 ? i : i + 1;
+            }
+        }
+        return history.length;
     }
 
     /**
@@ -199,7 +233,7 @@ export class ChatRunner {
      */
     private buildChatRequest(): StreamReadyChatRequest {
         return {
-            model: this.model,
+            model: this.llm.primaryModel,
             messages: this.buildRequestMessages(),
             tools: this.toolSystem.toOpenAITools(),
             tool_choice: "auto" as const,
@@ -216,7 +250,7 @@ export class ChatRunner {
     private async requestModelMessage() {
         const baseRequest = this.buildChatRequest();
         const streamRequest: ChatStreamRequest = { ...baseRequest, stream: true };
-        const stream = await generate_stream(this.client, streamRequest);
+        const stream = await generate_stream(this.llm.client, streamRequest);
 
         return this.consumeChatStream(stream);
     }
