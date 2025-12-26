@@ -461,14 +461,15 @@ export class ChatRunner {
     async run(): Promise<void> {
         while (true) {
             try {
-                const userInput = await this.promptUserInput();
+                let userInput = await this.promptUserInput();
                 if (userInput == null) continue;
 
                 // Commands first.
                 const action = await this.tryHandleCommand(userInput);
                 if (action) {
-                    if (action === "exit") break;
-                    continue;
+                    if (action.type === "exit") break;
+                    if (action.type === "continue") continue;
+                    userInput = action.input;
                 }
 
                 this.appendUserMessage(userInput);

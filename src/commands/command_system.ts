@@ -1,4 +1,7 @@
-export type CommandAction = "continue" | "exit";
+export type CommandAction =
+    | { type: "continue" }
+    | { type: "exit" }
+    | { type: "replace_input"; input: string };
 
 export type CommandHandler<Ctx> = (
     ctx: Ctx,
@@ -66,17 +69,17 @@ export class CommandSystem<Ctx> {
         // "/" -> show help
         if (!parsed.name) {
             console.log(this.formatHelp() + "\n");
-            return "continue";
+            return { type: "continue" };
         }
 
         const def = this.lookup.get(parsed.name);
         if (!def) {
             console.log(`Unknown command: ${this.prefix}${parsed.name}\nType '${this.prefix}' to see available commands.\n`);
-            return "continue";
+            return { type: "continue" };
         }
 
         const result = await def.handler(ctx, parsed.args);
-        return result ?? "continue";
+        return result ?? { type: "continue" };
     }
 
     private parse(input: string): { name: string; args: string[] } | null {

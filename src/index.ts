@@ -21,6 +21,7 @@ import { questionTool } from "./tools/question";
 import { Notebook } from "./notebook/notebook";
 import { addNoteTool, deleteNoteTool, updateNoteTool } from "./tools/notebook";
 import { configCommand } from "./commands/config";
+import { multilineCommand } from "./commands/m";
 import { RuntimeConfigService, requireLLMConfig, type ConfigSnapshot } from "./config/runtime_config";
 
 // 历史记录上下文
@@ -57,6 +58,7 @@ commandSystem
     .register(exitCommand)
     .register(toolsCommand)
     .register(saveCommand)
+    .register(multilineCommand)
     .register(configCommand);
 
 const runtimeConfig = new RuntimeConfigService();

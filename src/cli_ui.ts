@@ -16,6 +16,8 @@ export interface ChatUI {
     previewStream(title: string, stream: AsyncIterable<any>): Promise<{ reasoning: string; content: string }>;
     close(): void;
     resetPrompt?(): void;
+    suspendPrompt?(): void;
+    resumePrompt?(): void;
 }
 
 type TruncateOptions = { maxChars?: number; maxLines?: number };
@@ -32,7 +34,7 @@ export class CliUI implements ChatUI {
     printBanner(meta?: { model?: string }) {
         const model = meta?.model ? `  model=${meta.model}` : "";
         console.log(this.bold(this.c(ANSI.cyan, "Toy Agent CLI")) + this.dim(model));
-        console.log(this.dim("Type / for help.  /clear to reset context.  /tools to list tools.  /exit to quit."));
+        console.log(this.dim("Type / for help.  /m for multi-line input.  /clear to reset context.  /tools to list tools.  /exit to quit."));
         console.log();
     }
 
@@ -166,6 +168,21 @@ export class CliUI implements ChatUI {
 
     resetPrompt(): void {
         this.rl.close();
+        this.rl = this.createInterface();
+    }
+
+    suspendPrompt(): void {
+        try {
+            this.rl.close();
+        } catch {
+        }
+    }
+
+    resumePrompt(): void {
+        try {
+            this.rl.close();
+        } catch {
+        }
         this.rl = this.createInterface();
     }
 

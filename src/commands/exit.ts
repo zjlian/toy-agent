@@ -6,7 +6,7 @@ export const exitCommand: CommandDefinition<ChatContext> = {
     description: "Exit program",
     handler: async ({ ui }, _args): Promise<CommandAction> => {
         ui.printSystem("Goodbye!");
-        return "exit";
+        return { type: "exit" };
     },
 };
 
