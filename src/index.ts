@@ -23,6 +23,7 @@ import { addNoteTool, deleteNoteTool, updateNoteTool } from "./tools/notebook";
 import { configCommand } from "./commands/config";
 import { multilineCommand } from "./commands/m";
 import { RuntimeConfigService, requireLLMConfig, type ConfigSnapshot } from "./config/runtime_config";
+import { writeReportTool } from "./tools/write_report";
 
 // 历史记录上下文
 const conversationHistory: ChatCompletionMessageParam[] = [];
@@ -45,7 +46,8 @@ const toolSystem = new ToolSystem<ChatContext>()
     .register(questionTool)
     .register(addNoteTool)
     .register(updateNoteTool)
-    .register(deleteNoteTool);
+    .register(deleteNoteTool)
+    .register(writeReportTool);
 
 
 // 命令系统

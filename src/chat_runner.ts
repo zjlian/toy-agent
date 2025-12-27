@@ -368,10 +368,6 @@ export class ChatRunner {
 
             const toolCalls = this.getToolCalls(msg);
 
-            // 交错思维，将 thinking 的内容写入到 content 并入上下文
-            if (toolCalls?.length) {
-                msg.content = msg.reasoning_content;
-            }
             this.appendAssistantMessage(msg);
 
             if (toolCalls?.length) {
