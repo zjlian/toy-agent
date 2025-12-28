@@ -179,11 +179,7 @@ export const outlineTool: Tool<ChatContext> = {
                 ],
                 temperature: 0.7,
                 stream: true,
-                extra_body: {
-                    "thinking": {
-                        type: "disabled",
-                    },
-                }
+                thinking: { type: "disabled" }
             } as any);
 
             const { content: contentOut } = await ctx.ui.previewStream("outline stream", stream);
